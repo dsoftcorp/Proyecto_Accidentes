@@ -1,0 +1,866 @@
+---
+title: "CENTRO DE INVESTIGACIÓN EN MATEMÁTICAS (CIMAT)"
+author: ""
+date: ""
+output: pdf_document
+---
+
+
+---
+title: "CENTRO DE INVESTIGACIÓN EN MATEMÁTICAS (CIMAT)"
+author: ""
+date: ""
+output: pdf_document
+---
+![](logo2.png){width="70%"}\begin{center}
+\huge Proyecto Final - Estadística Espacial
+\end{center}
+
+```{=latex}
+\hrule height 1pt
+```
+
+\begin{center}
+\large Jesús Abner Ramírez Hermosillo\\
+\large José David Silva Guzmán\\
+\large Victor Hugo Hernández García\\
+\normalsize \emph{}
+\end{center}
+
+```{=latex}
+\hrule height 2pt
+```
+\
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Identificar puntos de control para instalación de alcoholímetros por accidentes relacionados con el alcohol
+
+## Objetivo
+Establecer puntos de control estratégicos para revisión de alcoholímetro mediante un análisis de vialidades principales, recurrencia de accidentes relacionados con el alcohol y zonas de venta de alcohol. 
+
+
+\newpage
+
+## Introducción
+La recolección de datos para la elaboración de la estadística de accidentes de tránsito terrestre en zonas urbanas y suburbanas inició en el año 1928, y los procedimientos para su obtención se han modificado paulatinamente. Con ella se mide la siniestralidad del transporte a nivel nacional, y se genera a partir del acopio y procesamiento de los datos alusivos a los accidentes ocurren en zonas no federales. 
+
+La estadística de accidentes de tránsito terrestre en zonas urbanas y suburbanas (ATUS) es un proyecto elaborado por el Instituto Nacional de Estadística y Geografía (INEGI), con el fin de proporcionar un panorama cuantitativo sobre la incidencia de percances viales en el ámbito nacional, así como las consecuencias humanas y materiales que conllevan. 
+En el campo de la generación de información estadística adquiere gran relevancia para los sectores público y privado que participan en la planeación, prevención y organización de la vialidad, así como para investigadores y organismos nacionales e internacionales interesados en el tema.
+
+El presente proyecto se centra en un aspecto particular de la estadística de accidentes que es la ocurrencia de incidentes ocasionados bajo el influjo de bebidas alcohólicas. En ese sentido los datos base a utilizar consisten en los accidentes viales y los establecimientos catalogados por el Directorio Estadístico Nacional de Unidades Económicas (DENUE) como de venta de alcohol para consumo.
+
+El ámbito de trabajo estará focalizado en el municipio de Aguascalientes y la temporalidad de los accidentes corresponde a los años 2019 y 2021 que son los que ofrecen información georreferenciada al respecto.
+
+Este trabajo tiene por premisa aplicar técnicas de geoestadística espacial a la información georreferenciada de los accidentes con la finalidad de obtener los siguientes resultados:
+
+-   Conocer y ubicar las zonas de mayor ocurrencia de accidentes, para ayudar a proyectar estrategias de solución.
+-   Evaluar la situación de la seguridad vial en la ciudad de Aguascalientes, identificando lugares idóneos para la instalación de operativos tipo "alcoholimetro".
+-   Prevenir la ocurrencia de accidentes, a partir del conocimiento de la incidencia local de accidentes viales.
+
+\newpage
+
+## Metodología
+Para recopilar los datos se usó como fuente principal de datos el sitio oficial del INEGI, en particular en los sitios:
+
+* https://www.inegi.org.mx/programas/accidentes/
+* https://www.inegi.org.mx/app/descarga/default.html
+
+De la primera liga, se obtuvo la información a nivel nacional de los accidentes de tráfico georreferenciados de los años 2019, 2020 y 2021. A partir de este conjunto de datos, se filtró concentrándose únicamente en el municipio de Aguascalientes y mediante el campo *ALIENTO*, se determinó que los valores iguales a $4$ corresponden a aliento alcohólico que son los accidentes de interés en este estudio, por lo que también se aplicó este filtro.
+
+Si bien se cuenta con información del año 2020 este se considera atípico debido a la pandemia por COVID 2019 ocurrida en dicho periodo. En ese sentido se estableció que trabajar con dicha información no hubiera producido los resultados esperados sobre todo en términos de comparabilidad y análisis temporales de accidentes por lo que los datos de trabajo se definieron como los correspondientes a los años 2019 y 2021.
+
+Adicional a esta información, de la segunda liga antes citada, se obtuvo del DENUE las unidades económicas a nivel nacional georreferenciadas. A partir de este conjunto de datos, se realizó un análisis para determinar los establecimientos que se dedican a la venta de alcohol determinando que; en el campo *codigo_act*, las claves que comienzan con el valor $7224$ se refieren a unidades económicas que se dedican a la venta de alcohol como pueden ser bares, antros, cantinas, merenderos, etc., así mismo, se filtró la información concentrándose únicamente en el municipio de Aguascalientes.
+
+Finalmente, se obtuvo la capa de *vialidades* y *AGEB* correspondientes al municipio de Aguascalientes a través del Marco Geoestadístico.
+
+A partir de este análisis previo y una vez obtenido el conjunto de datos mencionado, se procedió a hacer un análisis geoestadístico para predecir los puntos de interés y las vialidades que se encuentran en estos para dar así una propuesta para la implementación de puntos de verificación de alcoholímetro a las autoridades competentes.
+
+Librerías requeridas:
+```{r, message=F, warning=F}
+library(dplyr)
+library(tidyverse)
+library(sf)
+library(ggspatial)
+library(geoR)# variog
+library(sp)
+library(gstat)# variogram
+library(ggplot2)
+library(factoextra)
+library(cowplot)
+library(spatstat)
+library(maptools)
+```
+<!-- NO EJECUTAR ESTAS LÍNEAS (98-135) A MENOS QUE SE DESCARGUEN LOS ARCHIVOS A NIVEL NACIONAL PREVIO A FILTRAR LOS DATOS, DE LA SIGUIENTE LIGA: https://github.com/dsoftcorp/Proyecto_Accidentes -->
+Filtramos la información del DENUE según lo descrito anteriormente.
+```{r,eval=F}
+## datos DENUE venta alcohol: 7224
+dt.denue.2019.1 <- st_read("denue_2019_1.shp") %>% filter(
+  cve_mun == "001" & cve_ent == "01" & substring(codigo_act,1,4) == "7224")
+dt.denue.2019.2 <- st_read("denue_2019_2.shp") %>% filter(
+  cve_mun == "001" & cve_ent == "01" & substring(codigo_act,1,4) == "7224")
+dt.denue.2021.1 <- st_read("denue_2021_1.shp") %>% filter(
+  cve_mun == "001" & cve_ent == "01" & substring(codigo_act,1,4) == "7224")
+dt.denue.2021.2 <- st_read("denue_2021_2.shp") %>% filter(
+  cve_mun == "001" & cve_ent == "01" & substring(codigo_act,1,4) == "7224")
+```
+Filtramos la información de los accidentes de tráfico relacionados con aliento alcohólico en el municipio de Aguascalientes.
+```{r, eval=F, warning=F}
+dt.acc.2019 <- st_read("BASE MUNICIPAL_ACCIDENTES DE TRANSITO GEORREFERENCIADOS_2019.shp") %>% 
+  filter(EDO == 1 & ALIENTO == 4 & MPIO == 1)
+dt.acc.2020 <- st_read("BASE MUNICIPAL_ACCIDENTES DE TRANSITO GEORREFERENCIADOS_2020.shp") %>% 
+  filter(EDO == 1 & ALIENTO == 4 & MPIO == 1)
+dt.acc.2021 <- st_read("BASE MUNICIPAL_ACCIDENTES DE TRANSITO GEORREFERENCIADOS_2021.shp") %>% 
+  filter(EDO == 1 & ALIENTO == 4 & MPIO == 1)
+```
+Guardamos los filtros realizados en nuevos archivos para su manipulación y divulgación.
+```{r, eval=F}
+write_sf(dt.acc.2019, "dt.acc.2019.ags.shp")
+write_sf(dt.acc.2021, "dt.acc.2021.ags.shp")
+write_sf(dt.acc.2020, "dt.acc.2020.ags.shp")
+write_sf(dt.denue.2019.2, "dt.denue.2019.ags.shp")
+write_sf(dt.denue.2021.1, "dt.denue.2021.ags.shp")
+```
+Llamamos a los archivos .shp generados para el municipio de Aguascalientes para realizar el análisis.
+```{r, message=F, eval=F}
+dt.denue.2019.ags <- st_read("dt.denue.2019.ags.shp")
+dt.denue.2021.ags <- st_read("dt.denue.2021.ags.shp")
+dt.acc.2019.ags <- st_read("dt.acc.2019.ags.shp")
+dt.acc.2021.ags <- st_read("dt.acc.2021.ags.shp")
+vialidades <- st_read("ejes2.shp")
+ageb.c <- st_read("ageb_inter_ags_cen.shp")
+sf::st_transform(ageb.c, st_crs(dt.acc.2019.ags))
+```
+<!-- CONTINUAR EJECUTANDO A PARTIR DE AQUÍ CON LOS ARCHIVOS FILTRADOS QUE SE ENCUENTRAN EN EL ZIP ENTREGADO EN EL MOODLE -->
+
+```{r, message=F, warning=F, include=F, echo=T}
+dt.denue.2019.ags <- st_read("dt.denue.2019.ags.shp")
+dt.denue.2021.ags <- st_read("dt.denue.2021.ags.shp")
+dt.acc.2019.ags <- st_read("dt.acc.2019.ags.shp")
+dt.acc.2021.ags <- st_read("dt.acc.2021.ags.shp")
+vialidades <- st_read("ejes2.shp")
+ageb.c <- st_read("ageb_inter_ags_cen.shp")
+sf::st_transform(ageb.c, st_crs(dt.acc.2019.ags))
+```
+Definimos el GRID sobre el cuál se hará la interpolación de los registros mediante los diferentes modelos.
+```{r}
+datos.grid <- expand.grid(x=seq(-102.3843,-102.1871,l=110),
+                          y=seq(21.82405,21.94464,l=100))
+datos.grid.sf <- st_as_sf(datos.grid, coords=c("x","y"), crs = "")
+st_crs(datos.grid.sf) <- st_crs(ageb.c)
+```
+
+
+Una vez establecido esto, obtenemos los siguientes análisis.
+
+\newpage
+
+## Interpolación de accidentes por AGEB mediante Krige
+### Análisis exploratorio.
+Realizaremos un análisis previo de la información de los datos para conocer los niveles de accidentes relacionados con el alcohol y la cantidad de establecimientos con venta de alcohol por AGEB.
+```{r, echo=TRUE, fig.align='center', out.width=280}
+require(ggplot2)
+a = ggplot(data = ageb.c) +
+    geom_sf(mapping = aes(size=acc_2019, color=acc_2020)) +
+    labs(x = "LONGITUD", y = "LATITUD", title = "Accidentes relacionados con el alcohol",
+         color="#2020", size = "#2019")
+b = ggplot(data = ageb.c) +
+    geom_sf(mapping = aes(size=acc_2019, color=acc_2021)) +
+    labs(x = "LONGITUD", y = "LATITUD", title = "Accidentes relacionados con el alcohol",
+         color="#2021", size = "#2019")
+c = ggplot(data = ageb.c) +
+    geom_sf(mapping = aes(size=acc_2020, color=acc_2021)) +
+    labs(x = "LONGITUD", y = "LATITUD", title = "Accidentes relacionados con el alcohol",
+         color="#2021", size = "#2020")
+a; b; c
+```
+En estas gráficas observamos que los accidentes a través del tiempo tiene un comportamiento mas o menos similar pues a medida que se encuentra en zonas más céntricas de la ciudad y en las periferias es donde se tienen los menores registros de accidentes por AGEB. Veamos el comportamiento sobre la cantidad de establecimientos de venta de alcohol.
+```{r}
+ggplot(data = ageb.c) +
+    geom_sf(mapping = aes(color=denue_2019, size = denue_2021)) +
+    labs(x = "LONGITUD", y = "LATITUD", title = "Accidentes relacionados con el alcohol")
+```
+En este mapa observamos que los establecimientos de venta de alcohol se concentran en mayor medida en la región centro y en la región norte del municipio de Aguascalientes, esto preservándose con el paso de los años pues a colores más claros, figuras mas grandes que indican mayores cantidades de establecimientos de venta de alcohol.
+El comportamiento de establecimientos y accidentes por AGEB lo vemos representado en las siguientes gráficas.
+
+```{r}
+par(mfrow = c(2,2))
+hist(ageb.c$acc_2019[which(ageb.c$acc_2019 != 0)], main = "Accidentes 2019")
+hist(ageb.c$acc_2020[which(ageb.c$acc_2020 != 0)], main = "Accidentes 2020")
+hist(ageb.c$acc_2021[which(ageb.c$acc_2021 != 0)], main = "Accidentes 2021")
+```
+Como lo observábamos, de manera espacial los AGEB tienden a tener pocas observaciones en su mayoría pues la concentración de establecimientos y lugares de accidentes, están en regiones específicas. Dado que las distribuciones no tienen simetría, aplicaremos logaritmo a los registros de accidentes relacionados con el alcohol por AGEB.
+
+```{r}
+par(mfrow = c(2,2))
+hist(log(ageb.c$acc_2019[which(ageb.c$acc_2019 != 0 )]), main = "Accidentes 2019")
+hist(log(ageb.c$acc_2020[which(ageb.c$acc_2020 != 0 )]), main = "Accidentes 2020")
+hist(log(ageb.c$acc_2021[which(ageb.c$acc_2021 != 0 )]), main = "Accidentes 2021")
+```
+La distribución de las observaciones mejora un poco para los registros de accidentes. Esto podría traer como consecuencia problemas de outliers aunque, esto no necesariamente sucede por lo que procederemos con el análisis para los datos una vez aplicado el logaritmo y nos concentraremos en los años 2019 y 2021 debido a los efectos postpandemia.
+
+### Implementación de un modelo Krige con los datos concentrados por AGEB.
+Implementar un modelo Krige, nos permitirá  realizar un análisis predictivo sobre una malla de posiciones geográficas para con ello identificar las zonas con mayores índices de accidentes en el municipio de Aguascalientes y en base a este análisis, identificar de manera visual vialidades  principales o zonas para la instalación de alcoholimetros y con esto, pretender reducir el número de accidentes en años posteriores.
+
+```{r, out.width=400}
+variogr.2019.ageb <- variogram(log(acc_2019) ~ 1, ageb.c[which(ageb.c$acc_2019 != 0),])
+plot(variogr.2019.ageb, plot.numbers = TRUE, pch=16, cex=2, main = "Variograma accidentes 2019")
+```
+
+Parece ser  un varioagrama de clase Circuar, con un punto silla de 0.27, un rango de 1 y un nugget de  0.10
+
+```{r, out.width=400}
+vm.2019.ageb <- vgm(psill = 0.27, model = "Cir", range = 1, nugget = 0.1)
+plot(variogr.2019.ageb, pl=T, model=vm.2019.ageb, pch=16, cex=2, main = "Variograma accidentes 2019")
+```
+
+Si optimizamos el modelo tenemos lo siguiente:
+
+```{r, warning=F, out.width=400}
+vmf.2019.ageb <- fit.variogram(variogr.2019.ageb, vm.2019.ageb)
+vmf.2019.ageb
+plot(variogr.2019.ageb, pl=T, model=vmf.2019.ageb, pch=16, cex=2, main = "Variograma accidentes 2019")
+```
+
+Observamos que el variograma tiene un buen ajuste con un nugget de 0.049, un punto silla de 0.31 y un rango de 0.866
+
+Ahora obtengamos el variograma para los registros de accidentes por AGEB en 2021.
+```{r, out.width=400}
+variogr.2021.ageb <- variogram(log(acc_2021) ~ 1, ageb.c[which(ageb.c$acc_2021 != 0),])
+plot(variogr.2021.ageb, plot.numbers = TRUE, pch=16, cex=2, main = "Variograma accidentes 2021")
+```
+
+Parece ser  un varioagrama de clase Ste, con un punto silla de 0.6, un rango de 2 y un nugget de  0.10
+
+```{r, out.width=400}
+vm.2021.ageb <- vgm(psill = 0.6, model = "Ste", range = 2, nugget = 0.1)
+plot(variogr.2021.ageb, pl=T, model=vm.2021.ageb, pch=16, cex=2, main = "Variograma accidentes 2021")
+```
+
+Si optimizamos el modelo tenemos lo siguiente:
+
+```{r, warning=F, out.width=400}
+vmf.2021.ageb <- fit.variogram(variogr.2021.ageb, vm.2021.ageb)
+vmf.2021.ageb
+plot(variogr.2021.ageb, pl=T, model=vmf.2021.ageb, pch=16, cex=2, main = "Variograma accidentes 2021")
+```
+
+Observamos que el variograma tiene un buen ajuste con un nugget de 0.32, un punto silla de 0.37 y un rango de 2.58
+
+Ahora realizaremos la interpolación mediante Krige sobre el grid generado.
+```{r}
+acci_krige.2019.ageb <- krige(
+  log(acc_2019) ~ 1, locations = ageb.c[which(ageb.c$acc_2019 != 0),], newdata = 
+    datos.grid.sf, model = vmf.2019.ageb)
+summary(acci_krige.2019.ageb)
+```
+```{r}
+acci_krige.2021.ageb <- krige(
+  log(acc_2021) ~ 1, locations = ageb.c[which(ageb.c$acc_2021 != 0),], newdata = 
+    datos.grid.sf, model = vmf.2021.ageb)
+summary(acci_krige.2021.ageb)
+```
+y si lo visualizamos de manera gráfica tenemos el siguiente resultado:
+```{r, out.width=250}
+d = ggplot(acci_krige.2019.ageb["var1.pred"]) +
+      geom_sf(aes(color=var1.pred), shape=15) + 
+      labs(title='Interpolación de accidentes por AGEB en 2019') +
+      scale_color_distiller(palette="Spectral")
+e = ggplot(acci_krige.2021.ageb["var1.pred"]) +
+      geom_sf(aes(color=var1.pred), shape=15) +
+      labs(title='Interpolación de accidentes por AGEB en 2021') +
+      scale_color_distiller(palette="Spectral")
+d; e
+```
+De un año a otro observamos diferencias notables pues en algunas regiones del municipio los accidentes aumentan considerablemente notándolo en las regiones en color rojo por lo que de un año a otro determinamos que  los accidentes se incrementan pero estos parecen concentrarse cerca de las mismas regiones lo que permitiría establecer los puntos de control de alcoholimetro lo que veremos en el apartado de resultados.
+
+
+
+
+\newpage
+
+## Interpolación de accidentes mediante IDW y $k$-medias
+Una vez realizado el análisis predictivo de las zonas de accidentes usando kriging, lo siguiente fue buscar una segunda fuente de corroboración de dichas predicciones. En ese sentido se optó por usar IDW (Inverse Distance Weightening).
+
+El principio básico del IDW es que los valores desconocidos se estiman ponderando los valores observados en función de su proximidad espacial. La idea es que los puntos más cercanos a la ubicación de interés tendrán una influencia mayor en la estimación que los puntos más alejados.
+
+El IDW asigna pesos a los puntos de datos observados inversamente proporcional a su distancia a la ubicación de estimación. En otras palabras, los puntos más cercanos tienen un peso mayor en la estimación, mientras que los puntos más alejados tienen un peso menor. En este caso los pesos se calculan utilizando distancia euclidiana por lo pequeño del área de estudio.
+
+Se usara un parámetro de potencia de 2 que significa que se está utilizando una ponderación inversamente proporcional al cuadrado de la distancia, donde los pesos se calculan utilizando la fórmula $\frac{1}{d^2}$, donde d es la distancia entre el punto observado y la ubicación de estimación. Bajo este enfoque, los accidentes más cercanos tendrán un peso mayor en la estimación, mientras que los puntos más alejados tendrán un peso menor en comparación con un parámetro de potencia diferente. Esto se considera ideal dada la compactación de los accidentes en ciertas zonas.
+
+Primeramente para poder generar frecuencia de accidentes, se generó una división en 4 cuadrantes del área de trabajo con la finalidad de obtener el dato que permita predecir zonas de crecimiento de los incidentes.
+
+```{r message=FALSE,warning=FALSE}
+coords2019 <- cbind(dt.acc.2019.ags$LONGITUD,dt.acc.2019.ags$LATITUD)
+
+# Se generan cuadrantes con los accidentes
+set.seed(123)
+k2<- kmeans(coords2019, 4, nstart = 25)
+clusters <- as.data.frame(cbind(coords2019,k2$cluster))
+plot(clusters[,1:2], col=clusters[,3],pch = 16,main="Agrupación de accidentes por cuadrante 2019",
+     xlab="Longitud",ylab="Latitud")
+```
+
+Con los frecuencias generadas a continuación se genera el dataframe con las frecuencias de dichos cuadrantes. Se usara el grid de puntos ya definidos. De igual manera se asegura que todos estos archivos compartan un solo sistema de coordenadas.
+
+```{r}
+# Se separan los centroides de cada cuadrante y se contabiliza la frecuencia de
+# los accidentes en ellas
+
+datos = as.data.frame(cbind(k2$centers,count(clusters,V3)[,2]))
+colnames(datos) <- c("long","lat","frec")
+
+# Se asigna el mismo sistema de coordenadas a los archivos para el modelo IDW
+datos.sf <- st_as_sf(datos,coords = c("long","lat"))
+st_crs(datos.sf) <- st_crs(datos.grid.sf)
+
+```
+
+Con estos archivos se procede a generar un modelo IDW usando el parámetro de potencia ya definido como 2.
+
+```{r}
+datos.idw2019 <- gstat::idw(frec~1,datos.sf,newdata=datos.grid.sf,idp=2)
+```
+
+El resultado obtenido con base a los accidentes bajo el influjo de bebidas alcohólicas durante 2019 es el siguiente:
+
+```{r message=FALSE,warning=FALSE,echo=FALSE}
+pred_idw2019 <- ggplot(datos.grid, aes(x = x, y = y, fill = datos.idw2019$var1.pred)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(title="Predicción IDW 2019", x="Longitud", y="Latitud")+
+  theme_minimal() 
+pred_idw2019
+```
+Como puede observarse la predicción para el mayor concentración de accidentes viales ocasionadas por el consumo de alcohol corresponde al igual que la predicción realizada con AGEBS a la zona centro de la ciudad y a partir de ahí hacia la zona suroeste.
+
+De igual manera se constata si el comportamiento de los accidentes durante 2021 se mantiene conforme a estos resultados.
+
+```{r}
+# Se cargan los accidentes 2021 y se identifican los campos con coordenadas
+accidentes2021 <- st_read("dt.acc.2021.ags.shp")
+coords2021 <- cbind(accidentes2021$LONGITUD,accidentes2021$LATITUD)
+
+# Se generan cuadrantes con los accidentes
+k2<- kmeans(coords2021, 4, nstart = 25)
+clusters <- as.data.frame(cbind(coords2021,k2$cluster))
+plot(clusters[,1:2], col=clusters[,3],pch = 16,
+     main="Agrupación de accidentes por cuadrante 2021",
+     xlab="Longitud",ylab="Latitud")
+```
+
+Se genera el modelo IDW con los mismos parámetros que el año 2019.
+
+```{r}
+# Se separan los centroides de cada cuadrante y se contabiliza la frecuencia de
+# los accidentes en ellas
+datos = as.data.frame(cbind(k2$centers,count(clusters,V3)[,2]))
+colnames(datos) <- c("long","lat","frec")
+
+# Se asigna el mismo sistema de coordenadas a los archivos para el modelo IDW
+datos.sf <- st_as_sf(datos,coords = c("long","lat"))
+st_crs(datos.sf) <- st_crs(datos.grid.sf)
+
+# Se genera modelo IDW 2021
+datos.idw2021 <- gstat::idw(frec~1,datos.sf,newdata=datos.grid.sf,idp=2)
+
+```
+
+La predicción es la siguiente:
+
+```{r}
+pred_idw2021 <- ggplot(datos.grid, aes(x = x, y = y, fill = datos.idw2021$var1.pred)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(title="Predicción IDW 2021", x="Longitud", y="Latitud")+
+  theme_minimal() 
+pred_idw2021
+```
+
+Se observa que el área de mayor incidencia de accidentes viales por motivos de alcohol se ubicó nuevamente en la zona centro pero ahora en 2021 se extendió en segundo lugar la tendencia hacia el sur.
+
+En lo general los resultados confirman las predicciones obtenidas por kriging usando AGEBS, a continuación el análisis se centrara en predecir usando los datos de los accidentes pero ahora teniendo en cuenta el área de influencia de cada uno de los establecimientos con venta de bebidas alcohólicas.
+
+\newpage
+
+## Interpolación de accidentes por área de influencia de establecimientos de venta de bebidas mediante Krige
+
+En este enfoque buscamos relacionar los accidentes de tránsito con los establecimientos que venden alcohol en la proximidad. De este modo, decimos que un accidente cayó dentro del área de influencia de un establecimiento, si el accidente se encuentra dentro del radio de X kilómetros alrededor del establecimiento. El siguiente diagrama ilustra el área de influencia:
+
+```{r,warning=FALSE}
+library(ggforce)
+ggplot()+
+  geom_sf(data=vialidades, color = "gray")+
+  geom_sf(data=dt.acc.2019.ags, color="black")+
+  geom_sf(data=dt.denue.2019.ags, color="red", size=3)+
+  coord_sf(xlim=c(-102.305,-102.285), ylim=c(21.84,21.86))+
+  geom_circle(aes(x0 = -102.2942, y0= 21.8482, r = 0.008), color="red")
+```
+
+Donde el punto rojo representa un establecimiento y los puntos negros representan accidentes de tránsito bajo los efectos del alcohol. Bajo nuestros supuestos, relacionaremos los cinco accidentes que caen dentro del radio con el establecimiento. Para ello, definimos una función que cuenta los accidentes que caen dentro del radio de X kilómetros de cada establecimiento en nuestra base de datos.
+
+```{r}
+# Función de distancia euclidiana entre dos puntos de la base
+distanciaPuntos2 <- function(p1,indice, accidentes.año){
+  d<- sqrt((p1$latitud - accidentes.año[indice,]$LATITUD)^2 + 
+              (p1$longitud - accidentes.año[indice,]$LONGITUD)^2)
+}
+# Función que determina el número de accidentes dentro 
+# del radio de un establecimiento
+numeroAccidentes <- function(bar, accidentes.año){
+  conteo <- 0
+  distancia <- 0
+  for(i in 1:nrow(accidentes.año)){
+    di <- distanciaPuntos2(bar, i, accidentes.año)
+    if(di <= 0.005){
+      conteo = conteo +  1
+    }
+  }
+  return(conteo)
+}
+```
+
+Con estas funciones definidas, procedemos a realizar el conteo para cada establecimiento dentro de nuestos conjuntos de datos del DENUE de 2019 y 2021:
+
+```{r}
+temp <- proc.time()[3]
+accidentes2019 <- c()
+for(i in 1:nrow(dt.denue.2019.ags)){
+  accidentes2019[i] <- numeroAccidentes(dt.denue.2019.ags[i,], dt.acc.2019.ags)
+}
+print(paste("Tiempo de ejecución: ",proc.time()[3] - temp," seg", sep=""), quote = F)
+```
+
+```{r}
+temp <- proc.time()[3]
+accidentes2021 <- c()
+for(i in 1:nrow(dt.denue.2021.ags)){
+  accidentes2021[i] <- numeroAccidentes(dt.denue.2021.ags[i,], dt.acc.2021.ags)
+}
+print(paste("Tiempo de ejecución: ",proc.time()[3] - temp," seg", sep=""), quote = F)
+```
+
+A continuación, graficamos los resultados obtenidos para cada establecimiento. Mientras más grande sea el círculo, se detectaron un mayor número de accidentes dentro de su área de influencia.
+
+```{r, out.width=400}
+f = dt.denue.2019.ags %>% ggplot() +
+      geom_sf(data=vialidades, color = "gray")+
+      geom_sf(aes(size = accidentes2019), alpha = 0.25, color="red")+
+      coord_sf(xlim=c(-102.34,-102.18), ylim=c(21.82,21.95))+
+      labs(x = "coordenada este", y = "coordenada norte",
+      title = "Accidentes 2019")+
+      theme_minimal()
+g = dt.denue.2021.ags %>% ggplot() +
+      geom_sf(data=vialidades, color = "gray")+
+      geom_sf(aes(size = accidentes2021), alpha = 0.25, color="red")+
+      coord_sf(xlim=c(-102.34,-102.18), ylim=c(21.82,21.95))+
+      labs(x = "coordenada este", y = "coordenada norte",
+      title = "Accidentes 2021")+
+      theme_minimal()
+f
+```
+
+```{r, out.width=400}
+g
+```
+
+
+En general, se observa un incremento en el número de accidentes, particularmente es muy notorio en las zonas lejanas al centro de la ciudad.
+
+En las secciones siguientes, se realiza un ajuste de los variogramas asociados a los datos del año 2019 y 2021. Con ellos, se realiza el ajuste del modelo krige con el objetivo de estimar el número de accidentes de tránsito bajo los efectos del alcohol en cada punto de la ciudad.
+
+```{r}
+# dt.acc.2019$invDist <- 1/distAccidentes2019
+# dt.acc.2019$dist <- distAccidentes2019
+dt.denue.2019.ags$numAccidentes <- accidentes2019
+
+# dt.acc.2019$invDist <- 1/distAccidentes2019
+# dt.acc.2019$dist <- distAccidentes2019
+dt.denue.2021.ags$numAccidentes <- accidentes2021
+```
+
+### Variograma 2019
+
+Para los datos del año 2019 decidimos utilizar un modelo circular para el ajuste del variograma. Se realizaron experimentos previos con otros modelos, como el "Wav", pero se encontró que el modelo "Cir" genera mejores resultados.
+
+```{r}
+variograma <- variogram(numAccidentes ~ 1, dt.denue.2019.ags)
+vm <- vgm(psill = 20, model="Cir",range = 2, nugget = 0)
+plot(variograma, pl=T, model=vm, pch=16, cex=2)
+```
+
+Realizamos el ajuste automático del variograma usando los parámetros inciciales de la gráfica anterior.
+
+```{r}
+vmf <- fit.variogram(variograma, vm)
+vmf
+```
+
+```{r}
+plot(variograma, pl=T, model=vmf, pch=16, cex=2)
+```
+
+Antes de continuar con la aplicación del Krige, verificamos que no haya puntos duplicados en los datos, lo cual generaría un error por distancias cero. 
+
+```{r, warning = F}
+duplicados <- duplicated(cbind(dt.denue.2019.ags$latitud,
+                               dt.denue.2019.ags$longitud))
+dt.denue.2019.ags.sinDupli <- dt.denue.2019.ags[which(duplicados == FALSE),]
+st_crs(dt.denue.2019.ags.sinDupli) <- st_crs(datos.grid.sf)
+```
+
+Aplicamos el kriging simple, utilizando el grid de puntos definido en secciones anteriores.
+
+```{r}
+acci_krige_2019_den <- krige(numAccidentes ~ 1, 
+                             locations = dt.denue.2019.ags.sinDupli, 
+                             newdata = datos.grid.sf, model = vmf)
+summary(acci_krige_2019_den)
+```
+
+En la siguiente gráfica se muestra el resultado del krige para 2019. 
+
+```{r}
+ggplot(acci_krige_2019_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  scale_color_distiller(palette="Spectral")+
+  theme_minimal()
+```
+
+
+
+### Variograma 2021
+
+Para el caso del variograma del año 2021, se determinó usar un modelo "Cir", aunque con una mayor altura, dado que se detectan más accidentes durante este año.
+
+```{r}
+variograma <- variogram(numAccidentes ~ 1, dt.denue.2021.ags)
+vm <- vgm(psill = 40, model="Cir",range = 2, nugget = 0)
+plot(variograma, pl=T, model=vm, pch=16, cex=2)
+```
+
+
+```{r}
+vmf <- fit.variogram(variograma, vm)
+vmf
+plot(variograma, pl=T, model=vmf, pch=16, cex=2)
+```
+
+Aplicamos el krige para los datos del grid definido anteriormente.
+
+```{r warning=FALSE}
+# Eliminación de duplicados
+duplicados <- duplicated(cbind(dt.denue.2021.ags$latitud,
+                               dt.denue.2021.ags$longitud))
+dt.denue.2021.ags.sinDupli <- dt.denue.2021.ags[which(duplicados == FALSE),]
+st_crs(dt.denue.2021.ags.sinDupli) <- st_crs(datos.grid.sf)
+#Aplicación del kriging
+acci_krige_2021_den <- krige(numAccidentes ~ 1, 
+                             locations = dt.denue.2021.ags.sinDupli, 
+                             newdata = datos.grid.sf, model = vmf)
+summary(acci_krige_2021_den)
+```
+
+A continuación, graficamos los resultados del krige:
+
+```{r}
+ggplot(acci_krige_2021_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred),shape=15) +
+  scale_color_distiller(palette="Spectral")+
+  theme_minimal()
+```
+
+### Modelo Poisson
+
+Ahora procedemos a realizar un modelo de poisson para conteos. Para ello, cargamos el contorno de la ventana con el poligono de la ciudad.
+
+```{r, warning=FALSE}
+poligono <- as.owin(readShapePoly("loc_ags.shp"))
+```
+
+Transformamos los datos al formato ppp:
+
+```{r warning=FALSE}
+ppp_19 <- ppp(dt.acc.2019.ags$LONGITUD, dt.acc.2019.ags$LATITUD,
+              window = poligono)
+
+ppp_21 <- ppp(dt.acc.2021.ags$LONGITUD, dt.acc.2021.ags$LATITUD,
+              window = poligono)
+```
+
+
+Verificamos la pertinencia del modelo mediante la aplicación del test de dispersión, con lo cual verificamos que los accidentes de tránsito se distribuyen de forma heterogénea en la ciudad de Aguascalientes:
+
+```{r warning=FALSE}
+quadrat.test(ppp_19, 5,5)
+quadrat.test(ppp_21, 5,5)
+```
+
+Como covariable se utilizará la distancia de cada punto de la ciudad a el establecimiento más cercano que vende alcohol. La hipótesis del modelo será que los accidentes están relacionados de forma negativa con esta distancia. Es decir, mientras más cerca se está de un establecimiento, más probable es que haya accidentes.
+
+```{r warning=FALSE, out.width=400}
+denueppp19 <- ppp(dt.denue.2019.ags$longitud, dt.denue.2019.ags$latitud,
+              window = poligono)
+denueppp19 <- unique.ppp(denueppp19)
+img_dist19 <- distmap(denueppp19)
+img_dist19$v <- img_dist19$v*10000
+
+denueppp21 <- ppp(dt.denue.2021.ags$longitud, dt.denue.2021.ags$latitud,
+              window = poligono)
+denueppp21 <- unique.ppp(denueppp21)
+img_dist21 <- distmap(denueppp21)
+img_dist21$v <- img_dist21$v*10000
+
+plot(img_dist19, main="Distancia al establecimiento más cercano en 2019")
+plot(img_dist21, main="Distancia al establecimiento más cercano en 2021")
+```
+
+Realizamos la estimación de dos modelos para cada año, uno con la distancia como covariable y otro sin covariables. En la sección de resultados se analizan los resultados y se determina el mejor modelo.
+
+```{r}
+listaDatos19 <- list(accidentes = ppp_19, distancia = img_dist19)
+listaDatos21 <- list(accidentes = ppp_21, distancia = img_dist21)
+
+fit19 <- ppm(accidentes ~ 1, data = listaDatos19)
+fit21 <- ppm(accidentes ~ 1, data = listaDatos21)
+
+fitDist19 <- ppm(accidentes ~ distancia, data = listaDatos19)
+fitDist21 <- ppm(accidentes ~ distancia, data = listaDatos21)
+```
+
+
+
+
+\newpage
+
+## Resultados generales
+### Interpolación por AGEB
+Realizando la interpolación por AGEB mediante Krige tenemos lo siguiente:
+```{r, warning=FALSE, out.width=280}
+plot(acci_krige.2019.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=2,
+      main = "Predicción de accidentes 2019 y registros de accidentes",
+      pal = topo.colors)
+plot(dt.acc.2019.ags, add = TRUE, col = 1, pch = 19, cex = 0.4)
+
+plot(acci_krige.2019.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=2,
+      main = "Predicción de accidentes 2019 y estab. de venta de alcohol",
+      pal = topo.colors)
+plot(dt.denue.2019.ags, add = TRUE, col = 1, pch = 19, cex = 0.4)
+```
+```{r, warning=F}
+plot(acci_krige.2019.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=1.5,
+      main = "Predicción de accidentes y Vialidades",
+      pal = topo.colors)
+plot(vialidades, add = TRUE, col = 1)
+```
+
+Aquí podemos ver que las predicciones hechas mediante interpolación se ajustan bien tanto a los registros de accidentes como a los registros de establecimientos de venta de alcohol.  Visualizando las vialidades del municipio de Aguascalientes, identificamos ciertas vialidades donde más ocurrencia de accidentes suceden las cuales son Av. Aguascalientes a la altura de la UAA, calles céntricas y en el centro sur de la ciudad
+
+```{r, warning=FALSE, out.width=280}
+plot(acci_krige.2021.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=2,
+      main = "Predicción de accidentes 2021 y registros de accidentes",
+      pal = topo.colors)
+plot(dt.acc.2021.ags, add = TRUE, col = 1, pch = 19, cex = 0.4)
+
+plot(acci_krige.2021.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=2,
+      main = "Predicción de accidentes 2021 y estab. de venta de alcohol",
+      pal = topo.colors)
+plot(dt.denue.2021.ags, add = TRUE, col = 1, pch = 19, cex = 0.4)
+```
+```{r, warning=F}
+plot(acci_krige.2021.ageb["var1.pred"],
+      reset = FALSE,
+      nbreaks = 64, pch = 20,
+      cex=1.5,
+      main = "Predicción de accidentes y Vialidades",
+      pal = topo.colors)
+plot(vialidades, add = TRUE, col = 1)
+```
+Para el año 2021 observamos un crecimiento considerable en las regiones de accidentes mediante la interpolación pero de la misma manera observamos que la mayor concentración ocurren en vialidades de la zona centro de la ciudad y centro sur, además, a diferencia del año 2019 en la región norte aumentó considerablemente la predicción abarcando desde la misma Av. Aguascalientes a la altura de la UAA como vialidades como Av. Luis Donaldo Colosio y Av. Independencia.
+
+### Interpolación por IDW
+Los resultados usando el método IDW se muestran a continuación:
+
+```{r, out.width=380}
+plot_grid(pred_idw2019)
+plot_grid(pred_idw2021)
+```
+
+Comparando las interpolaciones de los años 2019 y 2021 se observa en lo general un comportamiento similar de incidencia en las regiones del área urbana de Aguascalientes.  
+Destaca la zona centro como el lugar donde se espera el mayor numero de incidentes viales a diferencia de la zona norte donde el numero se reduce hasta un 30%. Por otro lado si bien se confirman los resultados obtenidos por kriging si se aprecia una menor capacidad para identificar puntos específicos de alta incidencia de accidentes viales usando únicamente la densidad de los mismos por IDW por lo que la herramienta kriging resulta ser la más adecuada para investigaciones de esta índole.. 
+
+
+### Interpolación de accidentes por área de influencia de establecimientos de venta de bebidas
+
+A continuación se muestran los resultados del kriging de 2019 y 2021 mostrando las principales vialidades de la ciudad de Aguascalientes y la distribución de accidentes de los datos originales.
+
+```{r, out.width=400}
+ggplot(acci_krige_2019_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  geom_sf(data=dt.acc.2019.ags, color="black", size=0.8) +
+  geom_sf(data=vialidades, color="black", alpha=0.2)+
+  coord_sf(xlim=c(st_bbox(datos.grid.sf)$xmin,st_bbox(datos.grid.sf)$xmax), 
+           ylim=c(st_bbox(datos.grid.sf)$ymin,st_bbox(datos.grid.sf)$ymax))+
+  scale_color_distiller(palette="Spectral") +
+  labs(x = "coordenada este", y = "coordenada norte",
+      title = "Resultados del kriging y distribución de accidentes en 2019") +
+  theme_minimal()
+
+ggplot(acci_krige_2021_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  geom_sf(data=dt.acc.2021.ags, color="black", size=0.8) +
+  geom_sf(data=vialidades, color="black", alpha=0.2)+
+  coord_sf(xlim=c(st_bbox(datos.grid.sf)$xmin,st_bbox(datos.grid.sf)$xmax), 
+           ylim=c(st_bbox(datos.grid.sf)$ymin,st_bbox(datos.grid.sf)$ymax))+
+  scale_color_distiller(palette="Spectral") +
+  labs(x = "coordenada este", y = "coordenada norte",
+      title = "Resultados del kriging y distribución de accidentes en 2021") +
+  theme_minimal()
+```
+
+Observamos que las zonas con estimaciones más altas de accidentes del modelo kriging coinciden con la concentración de accidentes para ambos años. Cabe recordar que los puntos de observaciones utilizados en el modelo son los establecimientos que venden bebidas alcoholicas y no directamente los accidentes. Por lo tanto, podemos concluir que la consideración de las áreas de influencia de los establecimientos sí tiene una alta correlación con la incidencia de accidentes.
+
+```{r, out.width=400}
+ggplot(acci_krige_2019_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  geom_sf(data=dt.denue.2019.ags, color="black", size=0.8) +
+  geom_sf(data=vialidades, color="black", alpha=0.2)+
+  coord_sf(xlim=c(st_bbox(datos.grid.sf)$xmin,st_bbox(datos.grid.sf)$xmax), 
+           ylim=c(st_bbox(datos.grid.sf)$ymin,st_bbox(datos.grid.sf)$ymax))+
+  scale_color_distiller(palette="Spectral") +
+  labs(x = "coordenada este", y = "coordenada norte",
+      title = "Resultados del kriging y distribución de establecimientos en 2019") +
+  theme_minimal()
+
+ggplot(acci_krige_2021_den["var1.pred"]) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  geom_sf(data=dt.denue.2021.ags, color="black", size=0.8) +
+  geom_sf(data=vialidades, color="black", alpha=0.2)+
+  coord_sf(xlim=c(st_bbox(datos.grid.sf)$xmin,st_bbox(datos.grid.sf)$xmax), 
+           ylim=c(st_bbox(datos.grid.sf)$ymin,st_bbox(datos.grid.sf)$ymax))+
+  scale_color_distiller(palette="Spectral") +
+  labs(x = "coordenada este", y = "coordenada norte",
+      title = "Resultados del kriging y distribución de establecimientos en 2021") +
+  theme_minimal()
+```
+
+Al comparar los resultados del kriging con la distribución de establecimientos, notamos que la zona centro concentra muchos de los establecimientos y estimaciones de accidentes.
+
+A continuación, calculamos la diferencia en la estimación de accidentes del 2021 contra 2019. Esto nos permite destacar las zonas de la ciudad donde han aumentado los accidentes en estos dos años.
+
+```{r, warning=F, out.width=400}
+res19 <- acci_krige_2019_den["var1.pred"]
+res21 <- acci_krige_2021_den["var1.pred"]
+
+resDif <- res19
+resDif$var1.pred <- res21$var1.pred - res19$var1.pred
+
+ggplot(resDif) +
+  geom_sf(aes(color=var1.pred), shape=15) +
+  geom_sf(data=vialidades, color="black", alpha=0.2)+
+  coord_sf(xlim=c(st_bbox(datos.grid.sf)$xmin,st_bbox(datos.grid.sf)$xmax), 
+           ylim=c(st_bbox(datos.grid.sf)$ymin,st_bbox(datos.grid.sf)$ymax))+
+  scale_color_distiller(palette="Spectral") +
+  labs(x = "coordenada este", y = "coordenada norte",
+      title = "Cambio en la predicción de accidentes 2019-2021") +
+  theme_minimal()
+```
+
+Notamos que se destacan 5 zonas de la ciudad donde ha habido un aumento en la estimación de entre 10 a 15 accidentes en estos dos años. Por otro lado, se nota una ligera reducción en los accidentes al suroeste del centro de la ciudad.
+
+Con estos resultados, se pueden hacer recomendaciones a las autoridades sobre los puntos donde la colocación de zonas de control vehícular pueden ayudar a prevenir accidentes. Además, estos resultados pueden ser de utilidad para los servicios de primera respuesta a accidentes, tales como ambulancias o aseguradoras, pues lo que el modelo predice son el número de accidentes que se registran en un radio de 500 metros, por lo que al localizarse en estos puntos, una ambulancia puede dar servicio oportuno a un mayor número de accidentes.
+
+### Resultados del modelo Poisson
+
+El resultado del modelo sin covariables asume que los accidentes están distribuidos homogéneamente en la ciudad de Aguascalientes. Observamos que el parámetro para el 2021 es más alto que el estimado para 2019:
+
+```{r}
+fit19
+fit21
+```
+
+Los resultados del modelo con la distancia como variable dependiente indican que, por un lado, el número de accidentes decrece con la distancia a los puntos de venta y, por otro lado, para el año 2021 la incidencia de accidentes decrece menos con la distancia. Es decir, los accidentes tienden a ser más comunes a distancias mayores, lo que se refleja en el aumento en los accidentes por toda la ciudad respecto al año 2019.
+
+```{r}
+fitDist19
+fitDist21
+```
+
+Para probar si el modelo con distancias es adecuado, aplicamos la prueba ANOVA. Los resultados indican se rechaza la hipótesis nula de que el modelo más sencillo es mejor. Es decir, la distancia es significativa para la predicción de accidentes.
+
+```{r}
+anova(fit19,fitDist19, test = "LRT")
+anova(fit21,fitDist21, test = "LRT")
+```
+
+Por último, mostramos la gráfica con la predicción de accidentes del modelo seleccionada para los dos años.
+
+```{r, out.width=400}
+plot(predict.ppm(fitDist19), main = "Predicción de la intensidad de accidentes en el 2019")
+plot(predict.ppm(fitDist21), main = "Predicción de la intensidad de accidentes en el 2021")
+```
+
+\newpage
+
+## Conclusiones generales
+
+La estimación mediante kriging del área de influencia de los establecimientos nos indica las zonas de la ciudad donde se esperan más accidentes de transito. Una recomendación para las autoridades es la colocación de controles vehículares principalmente en estas zonas. Además, pueden considerarse otros factores para la reducción de los accidentes, tales como mejoras en el alumbrado público, señalizaciones de tránsito y patrullaje policial. Por otro lado, los resultados pueden ser de interés para los servicios de primeros auxilios, tales como ambulancias o agentes de seguros, pues si se localizan en un punto con una alta estimación de accidentes, significa que el accidente está a 500 metros, o menos, de distancia, por lo que el tiempo de respuesta puede ser muy reducido.
+
+Otra conclusión del modelo es que se localizaron algunas zonas de la ciudad donde en este periodo aumentaron considerablemente el número de accidentes. Es posible que en estas zonas se haya reducido la regulación en la venta de alcohol, o que se requiera un aumento en el mantenimiento de los caminos, alumbrado y señalamientos de estas regiones.
+
+El uso de técnicas de interpolación permite evaluar la incidencia de accidentes así como su relación con otras variables lo cual permite realizar inferencia con respecto a su ubicación o área de influencia dentro de la macha urbana de Aguascalientes.
+
+Los incidentes de trafico ocasionados por consumo de alcohol tienden a ocurrir a no poca distancia de las zonas con alta concentración de establecimientos que expenden bebidas alcohólicas.
+
+Todos los modelos propuestos nos permiten llegar a las mismas conclusiones, pues se demuestra la importancia de la distancia del accidente respecto a las zonas de la ciudad donde se concentran los bares, cantinas y centros nocturnos.
+
+Los resultados obtenidos por kriging, IDW y modelo Poisson permiten establecer que los lugares más idóneos para establecer operativos de pruebas de alcoholimetria se agrupan en las 2 siguientes zonas y vialidades:
+
+**Zona centro: Vialidades:**
+
+- Convención de 1914 Poniente (entre Av. Guadalupe y Av. José María Chávez)
+- Calles aledañas al centro
+
+**Zona norte: Vialidades:**
+
+- Av. Aguascalientes Poniente
+- Av. Luis Donaldo Colosio
+- Av. Independencia
+- Av. Universidad
+
+Para el año 2021 observamos un crecimiento considerable en las regiones de accidentes mediante la interpolación pero de la misma manera observamos que la mayor concentración ocurre en vialidades de la zona centro de la ciudad y centro sur, además, a diferencia del año 2019, en la región norte aumentó considerablemente la predicción.
+
+\newpage
+
+## Limitaciones y recomendaciones
+
+El análisis puede enriquecerse mas una vez que se libere más información georreferenciada para poder estudiar de manera geográfica el fenómeno de los incidentes viales.
+
+Sabemos que existe un sub-reporte en los accidentes relacionados con aliento alcohólico, debido a problemas con las aseguradoras, además de que en ocasiones el conductor puede darse a la fuga. Esto puede afectar las estimaciones con un sesgo a la baja.
+
+Como recomendación, se sugiere incorporar capas de información sobre mobiliario urbano, tales como el alumbrado público, semáforos, señalizaciones y calidad de caminos. También sería posible añadir la densidad de la población y sobre el parque vehícular.
+
+## Referencias
+
+- Notas de la clase
+- Baddeley, Rubak y Turner (2016) Spatial Point Patterns. Methodology and Applications with R. Chapman & Hall
+- Bivand, Pebesma y Gómez-Rubio (2013) Applied Spatial Data Analysis with R, Springer, 2da Edición. Nueva York.
+
+
+
